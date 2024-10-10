@@ -98,6 +98,9 @@ export default {
     ignoreFailedRemoteFile: {
       label: 'Ignore failed remote file(s)'
     },
+    download: {
+      label: 'Enable download (filename: display name)',
+    },
   },
   // subscription management page
   subPage: {
@@ -470,11 +473,13 @@ export default {
       githubUser: 'Please input GitHub username',
       gistToken: 'Please input Gist Token',
       defaultUserAgent: 'Please input Default User-Agent',
+      defaultProxy: 'Please input Default Proxy/Policy',
       defaultTimeout: 'Please input Default Timeout (in milliseconds)',
       cacheThreshold: 'Please input Cache Threshold (in KB)',
       noGithubUser: 'Not set GitHub username',
       noGistToken: 'Not set Gist Token',
       noDefaultUserAgent: 'Not set default user-agent',
+      noDefaultProxy: 'Not set default proxy/policy',
       noDefaultTimeout: 'Not set default timeout',
       noCacheThreshold: 'Not set cache threshold',
     },

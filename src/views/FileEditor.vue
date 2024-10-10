@@ -1,8 +1,17 @@
 <template>
   <div v-if="isDis">
-    <div class="page-wrapper">
+    <div class="page-wrapper" @click="handleEditGlobalClick">
       <!-- 基础表单 -->
       <div class="form-block-wrapper">
+        <div class="sticky-title-icon-container">
+          <nut-image
+            :class="{ 'sub-item-customer-icon': !appearanceSetting.isIconColor }"
+            :src="fileIcon"
+            fit="cover"
+            show-loading
+            @click="showIconPopup"
+          />
+        </div>
         <nut-form class="form" :model-value="form" ref="ruleForm">
           <!-- name -->
           <nut-form-item
@@ -44,6 +53,15 @@
               type="text"
             />
           </nut-form-item>
+          <nut-form-item
+            :label="$t(`filePage.download.label`)"
+            prop="download"
+            class="ignore-failed-wrapper"
+          >
+            <div class="switch-wrapper">
+              <nut-switch v-model="form.download" />
+            </div>
+          </nut-form-item>
           <!-- icon -->
           <nut-form-item
             :label="$t(`editorPage.subConfig.basic.icon.label`)"
@@ -57,7 +75,7 @@
               type="text"
               input-align="right"
               left-icon="shop"
-              @click-left-icon="iconTips"
+              @click-left-icon="showIconPopup"
             />
           </nut-form-item>
           <nut-form-item
@@ -144,7 +162,21 @@
               type="text"
             />
           </nut-form-item>
-
+          <nut-form-item
+            :label="$t(`editorPage.subConfig.basic.proxy.label`)"
+            prop="proxy"
+          >
+            <nut-input
+              :border="false"
+              class="nut-input-text"
+              v-model.trim="form.proxy"
+              :placeholder="$t(`editorPage.subConfig.basic.proxy.placeholder`)"
+              type="text"
+              input-align="right"
+              left-icon="tips"
+              @click-left-icon="proxyTips"
+            />
+          </nut-form-item>
           <nut-form-item
             :label="$t(`editorPage.subConfig.basic.subInfoUrl.label`)"
             prop="subInfoUrl"
@@ -207,9 +239,11 @@
         </nut-form>
       </div>
       <ActionBlock
+        ref="actionBlockRef"
         :checked="actionsChecked"
         :list="actionsList"
         sourceType="file"
+        @updateCustomNameModeFlag="updateCustomNameModeFlag"
         @addAction="addAction"
         @deleteAction="deleteAction"
       />
@@ -245,19 +279,28 @@
     :previewData="previewData"
     @closePreview="closePreview"
   />
+  <icon-popup
+    v-model:visible="iconPopupVisible"
+    ref="iconPopupRef"
+    @setIcon="setIcon">
+  </icon-popup>
 </template>
 
 <script lang="ts" setup>
+import logoIcon from "@/assets/icons/logo.png";
+import logoRedIcon from "@/assets/icons/logo-red.png";
 import { useSubsApi } from "@/api/subs";
 import { useFilesApi } from "@/api/files";
 import { usePopupRoute } from "@/hooks/usePopupRoute";
 import { useAppNotifyStore } from "@/store/appNotify";
 import { useGlobalStore } from "@/store/global";
+import { useSettingsStore } from '@/store/settings';
 import { useSubsStore } from "@/store/subs";
 import ActionBlock from "@/views/editor/ActionBlock.vue";
 import { addItem, deleteItem } from "@/utils/actionsOperate";
 import { actionsToProcess } from "@/utils/actionsToPorcess";
 import Script from "@/views/editor/components/Script.vue";
+import IconPopup from "@/views/icon/IconPopup.vue";
 import FilePreview from "@/views/FilePreview.vue";
 import { initStores } from "@/utils/initApp";
 import { Dialog, Toast } from "@nutui/nutui";
@@ -288,7 +331,9 @@ const subsStore = useSubsStore();
 const { showNotify } = useAppNotifyStore();
 
 const globalStore = useGlobalStore();
+const settingsStore = useSettingsStore();
 const { bottomSafeArea } = storeToRefs(globalStore);
+const { appearanceSetting } = storeToRefs(settingsStore);
 const padding = bottomSafeArea.value + "px";
 
 let scrollTop = 0;
@@ -342,20 +387,23 @@ watchEffect(() => {
     form.url = sourceData.url;
     form.subInfoUrl = sourceData.subInfoUrl;
     form.subInfoUserAgent = sourceData.subInfoUserAgent;
+    form.proxy = sourceData.proxy;
     form.ua = sourceData.ua;
     form.mergeSources = sourceData.mergeSources;
     form.content = sourceData.content;
     cmStore.setEditCode("FileEditer", sourceData.content);
     form.ignoreFailedRemoteFile = sourceData.ignoreFailedRemoteFile;
+    form.download = sourceData.download;
     const newProcess = JSON.parse(JSON.stringify(sourceData.process));
     form.process = newProcess;
     if (sourceData.process.length > 0) {
       form.process.forEach((item) => {
-        const { type, id } = item;
+        const { type, id, customName } = item;
         actionsChecked.push([id, true]);
         const action = {
           type,
           id,
+          customName,
           tipsDes: t(`editorPage.subConfig.nodeActions['${type}'].tipsDes`),
           component: null,
         };
@@ -511,9 +559,37 @@ const submit = () => {
     Toast.hide("submits");
   });
 };
-const iconTips = () => {
-  router.push(`/icon/collection`);
-};
+const proxyTips = () => {
+    Dialog({
+        title: '通过代理/节点/策略获取远程文件',
+        content: '1. Surge(参数 policy/policy-descriptor)\n\n可设置节点代理 例: Test = snell, 1.2.3.4, 80, psk=password, version=4\n\n或设置策略/节点 例: 国外加速\n\n2. Loon(参数 node)\n\nLoon 官方文档: \n\n指定该请求使用哪一个节点或者策略组（可以使节点名称、策略组名称，也可以说是一个Loon格式的节点描述，如：shadowsocksr,example.com,1070,chacha20-ietf,"password",protocol=auth_aes128_sha1,protocol-param=test,obfs=plain,obfs-param=edge.microsoft.com）\n\n3. Stash(参数 headers["X-Surge-Policy"])/Shadowrocket(参数 headers.X-Surge-Policy)/QX(参数 opts.policy)\n\n可设置策略/节点\n\n4. Node.js 版(模块 request 的 proxy 参数):\n\n例: http://127.0.0.1:8888\n\n※ 优先级由高到低: 文件配置, 默认配置',
+        popClass: 'auto-dialog',
+        textAlign: 'left',
+        okText: 'OK',
+        noCancelBtn: true,
+        closeOnPopstate: true,
+        lockScroll: false,
+      });
+  };
+// 图标
+const fileIcon = computed(() => {
+    if (form.icon) {
+      return form.icon
+    } else {
+      return appearanceSetting.value.isDefaultIcon ? logoIcon : logoRedIcon
+    }
+  })
+  const iconPopupVisible = ref(false)
+  const iconPopupRef = ref(null)
+  const showIconPopup = () => {
+    iconPopupVisible.value = true
+  }
+  const setIcon = (icon: any) => {
+    form.icon = icon.url
+  }
+  const iconTips = () => {
+    router.push(`/icon/collection`);
+  };
 // 名称验证器
 const nameValidator = (val: string): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -548,6 +624,17 @@ const urlValidator = (val: string): Promise<boolean> => {
 const customerBlurValidate = (prop: string) => {
   ruleForm.value.validate(prop);
 };
+const actionBlockRef = ref(null)
+const customNameModeFlag = ref(false)
+const updateCustomNameModeFlag = (flag) => customNameModeFlag.value = flag
+const handleEditGlobalClick = () => {
+  if (actionBlockRef.value) {
+    if (customNameModeFlag.value) {
+      // exit
+      actionBlockRef.value.exitAllEditName();
+    }
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -579,6 +666,27 @@ const customerBlurValidate = (prop: string) => {
 
 .form-block-wrapper {
   position: relative;
+  .sticky-title-icon-container {
+    display: flex;
+    justify-content: center;
+    .nut-image {
+      cursor: pointer;
+      width: 70px;
+      height: 70px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: transparent;
+      padding: 10px;
+    }
+    .sub-item-customer-icon {
+      :deep(img) {
+        & {
+          opacity: 0.8;
+          filter: brightness(var(--img-brightness));
+        }
+      }
+    }
+  }
 }
 
 .bottom-btn-wrapper {
